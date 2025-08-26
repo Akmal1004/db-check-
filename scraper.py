@@ -104,11 +104,17 @@ def main():
         logging.info(f"📄 Found CSV: {csv_file}")
 
         # 5️⃣ SAVE TO DATABASE
-        logging.info("📝 Saving data to the database...")
+        logging.info("📝 Processing and saving data to the database...")
         create_tables()  # Ensure table exists
 
         df = pd.read_csv(csv_file)
         df.columns = df.columns.str.strip()
+
+        # --- Enhanced Data Cleaning ---
+        # For columns that contain newlines, take only the first line.
+        for col in ["Price", "Momentum", "1D/5D Vol"]:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: str(x).split('\n')[0].strip())
 
         # Map DataFrame columns to the ORM model's attribute names
         column_mapping = {
@@ -125,11 +131,12 @@ def main():
         }
         df.rename(columns=column_mapping, inplace=True)
 
-        # Convert dataframe to list of dictionaries
+        # Convert dataframe to a list of dictionaries and apply final cleaning
         records = df.to_dict(orient='records')
-
-        # Clean the records
-        cleaned_records = [{k: clean_value(v) for k, v in record.items() if k in column_mapping.values()} for record in records]
+        cleaned_records = [
+            {k: clean_value(v) for k, v in record.items() if k in column_mapping.values()}
+            for record in records
+        ]
 
         db_session = next(get_db_session())
         repo = SgNextDayWatchlistRepository(db_session)
@@ -138,9 +145,12 @@ def main():
         repo.delete_all()
 
         logging.info(f"💾 Inserting {len(cleaned_records)} new records...")
-        repo.bulk_insert(cleaned_records)
+        inserted_count = repo.bulk_insert(cleaned_records)
 
-        logging.info("✅ Data inserted into database successfully")
+        if inserted_count > 0:
+            logging.info(f"✅ Successfully inserted {inserted_count} records into the database.")
+        else:
+            logging.error("❌ Data insertion failed. Please check the logs above for errors.")
 
     except Exception as e:
         logging.error(f"❌ Error: {e}")
