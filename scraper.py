@@ -111,10 +111,15 @@ def main():
         df.columns = df.columns.str.strip()
 
         # --- Enhanced Data Cleaning ---
-        # For columns that contain newlines, take only the first line.
-        for col in ["Price", "Momentum", "1D/5D Vol"]:
+        # For the 'Price' column, take only the first line.
+        if 'Price' in df.columns:
+            df['Price'] = df['Price'].apply(lambda x: str(x).split('\n')[0].strip())
+
+        # For other multi-line columns, join the lines with a comma to preserve all data.
+        for col in ["Momentum", "1D/5D Vol"]:
             if col in df.columns:
-                df[col] = df[col].apply(lambda x: str(x).split('\n')[0].strip())
+                # The `split('\n')` creates a list of lines, and `', '.join()` merges them.
+                df[col] = df[col].apply(lambda x: ', '.join(str(x).split('\n')))
 
         # Map DataFrame columns to the ORM model's attribute names
         column_mapping = {
