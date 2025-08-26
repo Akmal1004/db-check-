@@ -41,6 +41,13 @@ def get_db_session():
     finally:
         db.close()
 
+
+def create_tables():
+    """Create all tables in the metadata if they do not exist."""
+    logger.info("Initializing database tables...")
+    Base.metadata.create_all(bind=engine)
+    logger.info("Table initialization complete.")
+
 # ---------------- ORM TABLE ----------------
 class SgNextDayWatchlist(Base):
     __tablename__ = "nextday_watchlist_info"
@@ -131,22 +138,31 @@ class SgNextDayWatchlistRepository:
             self.session.rollback()
             return 0
 
+    def delete_all(self):
+        """Deletes all records from the table."""
+        try:
+            stmt = delete(SgNextDayWatchlist)
+            result = self.session.execute(stmt)
+            self.session.commit()
+            logger.info(f"Deleted all {result.rowcount} records from the table.")
+            return result.rowcount
+        except SQLAlchemyError as e:
+            logger.error(f"Error deleting all records: {e}", exc_info=True)
+            self.session.rollback()
+            return 0
+
 # ---------------- MAIN BLOCK FOR DEMONSTRATION ----------------
 if __name__ == "__main__":
     logger.info("Starting script execution...")
 
-    logger.info("Creating table 'nextday_watchlist_info' if it doesn't exist...")
-    Base.metadata.create_all(engine)
-    logger.info("Table setup complete.")
+    create_tables()
 
     db_session = next(get_db_session())
     repo = SgNextDayWatchlistRepository(db_session)
 
     # Clean up previous test data for a fresh run
-    logger.info("\n--- Cleaning up old data ---")
-    repo.delete_by_symbol("RELIANCE")
-    repo.delete_by_symbol("TCS")
-    repo.delete_by_symbol("INFY")
+    logger.info("\n--- Cleaning up old data with delete_all ---")
+    repo.delete_all()
 
     # Sample data for insertion
     sample_records = [
