@@ -1,10 +1,10 @@
 # ==============================================================================
-# FASTAPI ENDPOINT FOR NEXT-DAY WATCHLIST SCRAPER
+# FASTAPI ENDPOINT FOR NEXT-DAY WATCHLIST SCRAPER (v2 - Robust Error Handling)
 # ==============================================================================
 #
 # INSTRUCTIONS:
 # 1. Copy the code from this file (imports, helper function, and the endpoint).
-# 2. Paste it into your main FastAPI application file.
+# 2. Paste it into your main FastAPI application file, replacing the previous version.
 # 3. VERIFY THE IMPORT PATHS to make sure they match your project structure.
 #
 # ==============================================================================
@@ -47,7 +47,7 @@ def get_screener_logger_name(prefix, screener_name):
 
 
 # ------------------------------------------------------------------------------
-# 3. FASTAPI ENDPOINT
+# 3. FASTAPI ENDPOINT (v2 - Robust Error Handling)
 # Add this to your FastAPI `app` object.
 # ------------------------------------------------------------------------------
 # @app.get("/watchlist/trigger_nextday_scraper", tags=["Watchlist Scrapers"])
@@ -61,13 +61,17 @@ async def trigger_nextday_watchlist_scraper():
     process_logger_name = get_screener_logger_name(logger_prefix, screener_name)
     logger = get_trade_actions_dynamic_logger(process_logger_name)
 
-    session = next(get_db_session())
-    repo = ScreenerLogRepository(session)
-    log_entry = repo.start_log(process_logger_name)
+    session = None
+    repo = None
+    log_entry = None
 
-    logger.info(f"'{screener_name}' scraper process started at {get_current_ist_time_as_str()}")
     try:
-        # --- This is the line that executes your scraper ---
+        session = next(get_db_session())
+        repo = ScreenerLogRepository(session)
+        log_entry = repo.start_log(process_logger_name)
+
+        logger.info(f"'{screener_name}' scraper process started at {get_current_ist_time_as_str()}")
+
         run_nextday_watchlist_scraper()
 
         logger.info(f"'{screener_name}' scraper process completed at {get_current_ist_time_as_str()}")
@@ -75,11 +79,13 @@ async def trigger_nextday_watchlist_scraper():
         return {"status": f"'{screener_name}' scraper completed successfully."}
 
     except Exception as e:
-        # If the scraper fails, log the error and return an HTTP 500 error
         error_message = f"An error occurred: {str(e)}"
-        repo.complete_log(log_entry.log_id, status="FAILED", error_message=error_message)
-        logger.error(f"Failed to process '{screener_name}': {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"'{screener_name}' scraper failed. Reason: {error_message}")
+        logger.error(f"A critical error occurred in '{screener_name}' scraper endpoint: {e}", exc_info=True)
+
+        if repo and log_entry:
+            repo.complete_log(log_entry.log_id, status="FAILED", error_message=error_message)
+
+        raise HTTPException(status_code=500, detail=f"Internal Server Error in '{screener_name}' scraper. Error: {error_message}")
     finally:
-        # Ensure the database session is closed
-        session.close()
+        if session:
+            session.close()
